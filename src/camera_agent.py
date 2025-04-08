@@ -1,7 +1,8 @@
-import cv2
 import asyncio
 import base64
+
 import aiofiles
+import cv2
 from spade import agent, behaviour
 from spade.message import Message
 
@@ -9,7 +10,7 @@ from spade.message import Message
 class CameraAgent(agent.Agent):
     def __init__(self, jid, password):
         super().__init__(jid, password)
-        
+
     class SendPhotoBehaviour(behaviour.OneShotBehaviour):
         def __init__(self, requester_jid):
             super().__init__()
@@ -17,7 +18,7 @@ class CameraAgent(agent.Agent):
 
         async def run(self):
             print("Capturing image...")
-            camera = cv2.VideoCapture(0)
+            camera = cv2.VideoCapture(2)
 
             await asyncio.sleep(2)
 
@@ -40,7 +41,7 @@ class CameraAgent(agent.Agent):
 
             await self.send(msg)
             print("Photo sent.")
-            
+
     class WaitForRequestBehaviour(behaviour.CyclicBehaviour):
         async def run(self):
             print("Waiting for request...")
@@ -48,7 +49,9 @@ class CameraAgent(agent.Agent):
             if msg:
                 print("Received camera image request.")
                 requester_jid = str(msg.sender)
-                self.agent.add_behaviour(self.agent.SendPhotoBehaviour(requester_jid))
+                self.agent.add_behaviour(
+                    self.agent.SendPhotoBehaviour(requester_jid)
+                )
 
     async def setup(self):
         print(f"{self.jid} is ready.")

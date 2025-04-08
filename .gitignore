@@ -1,9 +1,1 @@
-.venv/
-__pycache__/
-
-prosody/prosody-data/*
-*.crt
-*.key
-*.dat
-
-.python-versiong
+src/__pycache__
