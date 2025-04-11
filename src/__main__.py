@@ -8,10 +8,10 @@ async def main():
     xmpp_server = os.environ.get("XMPP_SERVER", "prosody")
     xmpp_username = os.environ.get("XMPP_USERNAME", "camera_agent")
     xmpp_password = os.environ.get("XMPP_PASSWORD", "top_secret")
-    
+
     sender_jid = f"{xmpp_username}@{xmpp_server}"
     sender_password = xmpp_password
-    
+
     print(f"Connecting with JID: {sender_jid}")
 
     sender = CameraAgent(sender_jid, sender_password)
@@ -33,7 +33,6 @@ async def main():
     finally:
         # Clean up: stop the agent
         await sender.stop()
-
 
 
 if __name__ == "__main__":

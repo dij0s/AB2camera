@@ -14,6 +14,7 @@ class CameraAgent(agent.Agent):
         # picture requests logging
         # as per default 500ms timeout
         self.timeout = 500  # ms
+        self.ban_timeout = 10000  # ms
         self.requests: dict = {}
 
     class SendPhotoBehaviour(behaviour.OneShotBehaviour):
@@ -82,7 +83,33 @@ class CameraAgent(agent.Agent):
                     self.agent.SendPhotoBehaviour(requester_jid, self.camera)
                 )
 
+    class BanRequestBehaviour(behaviour.CyclicBehaviour):
+        def __init__(self, camera):
+            super().__init__()
+            self.camera = camera
+            self.reset_timeout = lambda last: (
+                lambda now: int(round((now - last) * 1000))
+                >= self.camera.ban_timeout
+            )
+
+        async def run(self):
+            msg = await self.receive(timeout=9999)
+            if msg and msg.get_metadata("performative") == "ban":
+                now = time()
+                target_jid = msg.body
+                self.camera.requests[target_jid] = self.reset_timeout(now)
+                print(
+                    f"Agent {target_jid} has been banned for {self.camera.ban_timeout}ms)"
+                )
+
+                # Optionally, send confirmation
+                reply = Message(to=str(msg.sender))
+                reply.set_metadata("performative", "confirm")
+                reply.body = f"Agent {target_jid} has been banned"
+                await self.send(reply)
+
     async def setup(self):
         print(f"{self.jid} is ready.")
         # Instead of immediately sending a photo, wait for requests
         self.add_behaviour(self.WaitForRequestBehaviour(self))
+        self.add_behaviour(self.BanRequestBehaviour(self))
