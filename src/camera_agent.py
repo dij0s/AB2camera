@@ -113,14 +113,9 @@ class CameraAgent(agent.Agent):
 
             # check if last request exceeded
             # predefined timeout
-            if self.camera.requests.get(self.requester_jid, lambda _: True)(
+            if not self.camera.requests.get(self.requester_jid, lambda _: True)(
                 now
             ):
-                print(f"Request from {self.requester_jid} exceeded timeout.")
-                self.camera.requests[self.requester_jid] = self.reset_timeout(
-                    now
-                )
-            else:
                 print(
                     f"Request from {self.requester_jid} under timeout. No response.."
                 )
