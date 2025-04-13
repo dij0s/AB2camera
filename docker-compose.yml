@@ -18,7 +18,7 @@ services:
     volumes:
       - ./src:/app/src
     devices:
-      - /dev/video0:/dev/video0
+      - /dev/video2:/dev/video0
     privileged: true
 
 networks:

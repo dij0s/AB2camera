@@ -1,5 +1,6 @@
 import asyncio
 import base64
+import re
 from time import time
 
 import aiofiles
@@ -28,6 +29,11 @@ class CameraAgent(agent.Agent):
         self.runner = None
         self.site = None
 
+        # create event for ban concurrency
+        # issues as request is ongoing process
+        self.processing_complete = asyncio.Event()
+        self.processing_complete.set()
+
     async def handle_ban_request(self, request):
         """Handle incoming ban requests via HTTP."""
         try:
@@ -41,11 +47,13 @@ class CameraAgent(agent.Agent):
             target_jid = data["agent"]
             now = time()
 
-            # Apply the ban
-            self.requests[target_jid] = (
-                lambda check_time: int(round((check_time - now) * 1000))
-                >= self.ban_timeout
+            reset_ban_timeout = lambda last: (
+                lambda now: int(round((now - last) * 1000)) >= self.ban_timeout
             )
+            # Apply the ban if there is
+            # no registred behaviour
+            await self.processing_complete.wait()
+            self.requests[target_jid] = reset_ban_timeout(now)
 
             print(
                 f"Agent {target_jid} has been banned for {self.ban_timeout}ms"
@@ -91,7 +99,8 @@ class CameraAgent(agent.Agent):
     class SendPhotoBehaviour(behaviour.OneShotBehaviour):
         def __init__(self, requester_jid, camera):
             super().__init__()
-            self.requester_jid = requester_jid
+            self.raw_requester_jid = requester_jid
+            self.requester_jid = re.sub(r"(.*@.*)\/.*", r"\1", requester_jid)
             self.camera = camera
             self.reset_timeout = lambda last: (
                 lambda now: int(round((now - last) * 1000))
@@ -99,6 +108,7 @@ class CameraAgent(agent.Agent):
             )
 
         async def run(self):
+            self.camera.processing_complete.clear()
             now = time()
 
             # check if last request exceeded
@@ -106,12 +116,20 @@ class CameraAgent(agent.Agent):
             if self.camera.requests.get(self.requester_jid, lambda _: True)(
                 now
             ):
+                print(f"Request from {self.requester_jid} exceeded timeout.")
                 self.camera.requests[self.requester_jid] = self.reset_timeout(
                     now
                 )
             else:
-                print("Request under timeout. No response..")
-                return
+                print(
+                    f"Request from {self.requester_jid} under timeout. No response.."
+                )
+
+                msg = Message(to=self.raw_requester_jid)
+                msg.set_metadata("performative", "info")
+                msg.body = "Request cancelled due to ban"
+
+                await self.send(msg)
 
             print("Capturing image...")
             camera = cv2.VideoCapture(2)
@@ -131,11 +149,22 @@ class CameraAgent(agent.Agent):
                 img_data = await img_file.read()
                 encoded_img = base64.b64encode(img_data).decode("utf-8")
 
-            msg = Message(to=self.requester_jid)
+            # Check again if agent was banned during processing
+            if not self.camera.requests.get(self.requester_jid, lambda _: True)(now):
+                print(f"Agent {self.requester_jid} was banned during processing. Dropping response.")
+                msg = Message(to=self.raw_requester_jid)
+                msg.set_metadata("performative", "info")
+                msg.body = "Request cancelled due to ban"
+                await self.send(msg)
+                return
+
+            msg = Message(to=self.raw_requester_jid)
             msg.set_metadata("performative", "inform")
             msg.body = encoded_img
 
             self.camera.requests[self.requester_jid] = self.reset_timeout(now)
+            self.camera.processing_complete.set()
+
             await self.send(msg)
             print("Photo sent.")
 
@@ -154,38 +183,12 @@ class CameraAgent(agent.Agent):
                     self.agent.SendPhotoBehaviour(requester_jid, self.camera)
                 )
 
-    # class BanRequestBehaviour(behaviour.CyclicBehaviour):
-    #     def __init__(self, camera):
-    #         super().__init__()
-    #         self.camera = camera
-    #         self.reset_timeout = lambda last: (
-    #             lambda now: int(round((now - last) * 1000))
-    #             >= self.camera.ban_timeout
-    #         )
-
-    #     async def run(self):
-    #         msg = await self.receive(timeout=9999)
-    #         if msg and msg.get_metadata("performative") == "ban":
-    #             now = time()
-    #             target_jid = msg.body
-    #             self.camera.requests[target_jid] = self.reset_timeout(now)
-    #             print(
-    #                 f"Agent {target_jid} has been banned for {self.camera.ban_timeout}ms)"
-    #             )
-
-    #             # Optionally, send confirmation
-    #             reply = Message(to=str(msg.sender))
-    #             reply.set_metadata("performative", "confirm")
-    #             reply.body = f"Agent {target_jid} has been banned"
-    #             await self.send(reply)
-
     async def setup(self):
         print(f"{self.jid} is ready.")
         # Start the HTTP server
         await self.start_http_server()
         # Keep the XMPP behaviors for photo requests
         self.add_behaviour(self.WaitForRequestBehaviour(self))
-        # self.add_behaviour(self.BanRequestBehaviour(self))
 
     async def stop(self):
         # Stop the HTTP server first
