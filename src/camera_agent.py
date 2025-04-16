@@ -62,7 +62,8 @@ class CameraAgent(agent.Agent):
             return web.json_response(
                 {
                     "status": "success",
-                    "message": f"Agent {target_jid} has been banned for {self.ban_timeout}ms",
+                    "message": f"Agent {target_jid} has been banned",
+                    "ban_timeout": self.ban_timeout,
                 }
             )
 
@@ -145,8 +146,12 @@ class CameraAgent(agent.Agent):
                 encoded_img = base64.b64encode(img_data).decode("utf-8")
 
             # Check again if agent was banned during processing
-            if not self.camera.requests.get(self.requester_jid, lambda _: True)(now):
-                print(f"Agent {self.requester_jid} was banned during processing. Dropping response.")
+            if not self.camera.requests.get(self.requester_jid, lambda _: True)(
+                now
+            ):
+                print(
+                    f"Agent {self.requester_jid} was banned during processing. Dropping response."
+                )
                 msg = Message(to=self.raw_requester_jid)
                 msg.set_metadata("performative", "info")
                 msg.body = "Request cancelled due to ban"

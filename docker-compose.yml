@@ -17,8 +17,6 @@ services:
       PYTHONUNBUFFERED: 1
     volumes:
       - ./src:/app/src
-    devices:
-      - /dev/video2:/dev/video0
     privileged: true
 
 networks:
